@@ -1,21 +1,53 @@
-# Danh sach trang can theo doi.
-# Moi trang la 1 khoi bat dau bang dau "-". Giu dung thut le (2 dau cach).
+# ============================================================
+# TU KHOA: chi nhung dong chua mot trong cac tu nay (va 1 dong
+# ngay sau no) moi duoc so sanh. Them/bot tu tuy y.
+# - Khong phan biet hoa thuong.
+# - Tu tu nhan so nhieu: "fee" khop ca "fees".
+# - KHONG them ten thang (March, July...): se loi lich su kien.
+# ============================================================
+keywords:
+  - deadline
+  - application
+  - apply
+  - admission
+  - requirement
+  - tuition
+  - fee
+  - "€"
+  - eur
+  - euro
+  - semester
+  - scholarship
+  - ielts
+  - toefl
+  - gmat
+  - gre
+  - gpa
+  - ects
+  - credit
+  - proficiency
+
+# ============================================================
+# DANH SACH TRANG. Moi trang la 1 khoi bat dau bang "- id:".
+# Giu dung thut le: "- id:" thut 2 dau cach, cac dong duoi thut 4.
 #
-#   id:        ten ngan, KHONG trung nhau, chi dung chu thuong, so, dau gach ngang
+#   id:        ten ngan, KHONG trung nhau (chu thuong, so, gach ngang)
 #   program:   ten chuong trinh (hien trong tin nhan Telegram)
 #   page_type: overview / fee / deadline / requirement
 #   url:       link trang CHINH THUC cua truong
-#   selector:  de trong (null) = lay ca trang. Chi them khi bi bao dong gia.
-
-- id: klu-glscm
-  program: KLU - MSc Global Logistics & SCM
-  page_type: overview
-  url: https://www.klu.org/master-logistics/
-  selector: null
+#   selector:  null = lay ca trang. Chi them khi van bi bao dong gia.
+#   filter:    (tuy chon) "none" = so sanh ca trang, khong loc tu khoa
+# ============================================================
+pages:
+  - id: klu-glscm
+    program: KLU - MSc Global Logistics & SCM
+    page_type: overview
+    url: https://www.klu.org/master-logistics/
+    selector: null
 
 # Mau de copy them chuong trinh moi (bo dau # o dau moi dong):
-# - id: ten-truong-ten-nganh
-#   program: Ten truong - Ten chuong trinh
-#   page_type: overview
-#   url: https://...
-#   selector: null
+#  - id: ten-truong-ten-nganh
+#    program: Ten truong - Ten chuong trinh
+#    page_type: overview
+#    url: https://...
+#    selector: null

@@ -5,6 +5,9 @@ Moi lan chay:
   1. Doc danh sach trang trong watchlist.yaml
   2. Tai tung trang, lay phan chu (text), chuan hoa
   3. So voi ban luu lan truoc (thu muc snapshots/)
+     Mac dinh chi giu cac dong co tu khoa quan trong (deadline, hoc phi,
+     yeu cau dau vao...) + 1 dong ngay sau, de tranh bao dong gia
+     tu lich su kien, tin tuc, loi chung thuc...
   4. Neu khac -> gui Telegram kem doan thay doi
      Neu khong tai duoc -> gui canh bao loi
   5. Luu ban moi vao snapshots/
@@ -41,6 +44,20 @@ MAX_DIFF_LINES = 20              # so dong thay doi toi da trong 1 tin nhan
 TELEGRAM_LIMIT = 4000            # Telegram gioi han ~4096 ky tu / tin
 
 VN_TZ = timezone(timedelta(hours=7))
+
+# Tu khoa mac dinh, dung khi watchlist.yaml khong khai bao "keywords".
+# So khop ca tu (khong phan biet hoa thuong), chap nhan them duoi -s / -es:
+# "fee" khop "fees" nhung khong khop "feedback"; "eur" khong khop "Europe".
+DEFAULT_KEYWORDS = [
+    "deadline", "application", "apply", "admission", "requirement",
+    "tuition", "fee", "€", "eur", "euro", "semester", "scholarship",
+    "ielts", "toefl", "gmat", "gre", "gpa", "ects", "credit", "proficiency",
+]
+CONTEXT_LINES_AFTER = 1          # giu them N dong ngay sau dong co tu khoa
+
+# Danh dau dong dau file snapshot. Khi cach loc thay doi, snapshot cu duoc
+# lay lam moc moi thay vi bi bao "thay doi".
+SNAPSHOT_HEADER_PREFIX = "# study-watcher filter: "
 
 # Cac the HTML thuong chua noi dung "nhieu" (menu, footer, script...)
 NOISE_TAGS = ["script", "style", "noscript", "nav", "footer", "header",
@@ -120,6 +137,29 @@ def extract_text(html: str, selector: str | None) -> str:
     return "\n".join(lines)
 
 
+def build_keyword_regex(keywords: list[str]) -> re.Pattern:
+    parts = []
+    for kw in keywords:
+        kw = str(kw).strip().lower()
+        if not kw:
+            continue
+        if re.fullmatch(r"\w[\w\s-]*", kw):
+            parts.append(rf"(?<!\w){re.escape(kw)}(?:s|es)?(?!\w)")
+        else:  # ky hieu nhu "€": khop o bat ky dau
+            parts.append(re.escape(kw))
+    return re.compile("|".join(parts), re.IGNORECASE)
+
+
+def filter_lines(text: str, pattern: re.Pattern) -> str:
+    """Chi giu dong co tu khoa + CONTEXT_LINES_AFTER dong ngay sau no."""
+    lines = text.splitlines()
+    keep = set()
+    for i, line in enumerate(lines):
+        if pattern.search(line):
+            keep.update(range(i, min(i + 1 + CONTEXT_LINES_AFTER, len(lines))))
+    return "\n".join(lines[i] for i in sorted(keep))
+
+
 # ---------------------------------------------------------------- So sanh
 def short_diff(old: str, new: str) -> str:
     """Tra ve cac dong bi xoa (-) va them (+), toi da MAX_DIFF_LINES dong."""
@@ -141,11 +181,17 @@ def sha(text: str) -> str:
 
 
 # ---------------------------------------------------------------- Main
-def check_page(item: dict) -> dict:
-    """Kiem tra 1 trang. Tra ve dict: status = new | same | changed | error | blocked."""
+def check_page(item: dict, keywords: list[str]) -> dict:
+    """Kiem tra 1 trang.
+    status = new | rebaseline | same | changed | error | blocked."""
     page_id = item["id"]
     url = item["url"]
     snap_file = SNAPSHOT_DIR / f"{page_id}.txt"
+    use_filter = str(item.get("filter", "keywords")).lower() != "none"
+    label = ("keywords " + sha("|".join(sorted(k.lower() for k in keywords)))[:8]
+             if use_filter else "none")
+    label += f" | selector={item.get('selector')}"
+    header = SNAPSHOT_HEADER_PREFIX + label
 
     if not allowed_by_robots(url):
         return {"status": "blocked", "item": item}
@@ -155,24 +201,45 @@ def check_page(item: dict) -> dict:
     except Exception as exc:  # noqa: BLE001 - muon bat moi loi de bao ve Telegram
         return {"status": "error", "item": item, "error": str(exc)[:300]}
 
-    if not text:
-        return {"status": "error", "item": item, "error": "Trang không có chữ nào"}
+    if use_filter:
+        text = filter_lines(text, build_keyword_regex(keywords))
 
+    if not text:
+        msg = ("Không có dòng nào chứa từ khóa. Kiểm tra lại URL, "
+               "hoặc đặt filter: none cho trang này") if use_filter \
+            else "Trang không có chữ nào"
+        return {"status": "error", "item": item, "error": msg}
+
+    content = header + "\n" + text
     if not snap_file.exists():
-        snap_file.write_text(text, encoding="utf-8")
+        snap_file.write_text(content, encoding="utf-8")
         return {"status": "new", "item": item}
 
-    old = snap_file.read_text(encoding="utf-8")
+    old_lines = snap_file.read_text(encoding="utf-8").splitlines()
+    old_header = old_lines[0] if old_lines and old_lines[0].startswith(
+        SNAPSHOT_HEADER_PREFIX) else None
+    if old_header != header:
+        # Cach loc da doi (hoac snapshot tu phien ban cu): lay lam moc moi
+        snap_file.write_text(content, encoding="utf-8")
+        return {"status": "rebaseline", "item": item}
+
+    old = "\n".join(old_lines[1:])
     if sha(old) == sha(text):
         return {"status": "same", "item": item}
 
-    snap_file.write_text(text, encoding="utf-8")
+    snap_file.write_text(content, encoding="utf-8")
     return {"status": "changed", "item": item, "diff": short_diff(old, text)}
 
 
 def main() -> int:
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    watchlist = yaml.safe_load(WATCHLIST_FILE.read_text(encoding="utf-8")) or []
+    data = yaml.safe_load(WATCHLIST_FILE.read_text(encoding="utf-8")) or []
+    # Ho tro ca dang cu (danh sach trang) va dang moi (keywords + pages)
+    if isinstance(data, dict):
+        keywords = data.get("keywords") or DEFAULT_KEYWORDS
+        watchlist = data.get("pages") or []
+    else:
+        keywords, watchlist = DEFAULT_KEYWORDS, data
     today = datetime.now(VN_TZ).strftime("%d/%m/%Y")
 
     ids = [w["id"] for w in watchlist]
@@ -185,7 +252,7 @@ def main() -> int:
     for i, item in enumerate(watchlist):
         if i:
             time.sleep(DELAY_BETWEEN_PAGES)
-        result = check_page(item)
+        result = check_page(item, keywords)
         results.append(result)
         print(f"[{result['status']:>7}] {item['id']}")
 
@@ -208,8 +275,14 @@ def main() -> int:
         names = "\n".join(f"- {r['item']['id']}" for r in new)
         send_telegram(f"✅ Bắt đầu theo dõi {len(new)} trang mới ({today}):\n{names}")
 
+    rebased = [r for r in results if r["status"] == "rebaseline"]
+    if rebased:
+        names = "\n".join(f"- {r['item']['id']}" for r in rebased)
+        send_telegram(f"🔄 Cách lọc đã thay đổi, lấy làm mốc so sánh mới "
+                      f"cho {len(rebased)} trang ({today}):\n{names}")
+
     counts = {s: sum(r["status"] == s for r in results)
-              for s in ("new", "same", "changed", "error", "blocked")}
+              for s in ("new", "rebaseline", "same", "changed", "error", "blocked")}
     print("Tổng kết:", counts)
     return 0
 
