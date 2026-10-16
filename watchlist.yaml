@@ -1,0 +1,21 @@
+# Danh sach trang can theo doi.
+# Moi trang la 1 khoi bat dau bang dau "-". Giu dung thut le (2 dau cach).
+#
+#   id:        ten ngan, KHONG trung nhau, chi dung chu thuong, so, dau gach ngang
+#   program:   ten chuong trinh (hien trong tin nhan Telegram)
+#   page_type: overview / fee / deadline / requirement
+#   url:       link trang CHINH THUC cua truong
+#   selector:  de trong (null) = lay ca trang. Chi them khi bi bao dong gia.
+
+- id: klu-glscm
+  program: KLU - MSc Global Logistics & SCM
+  page_type: overview
+  url: https://www.klu.org/master-logistics/
+  selector: null
+
+# Mau de copy them chuong trinh moi (bo dau # o dau moi dong):
+# - id: ten-truong-ten-nganh
+#   program: Ten truong - Ten chuong trinh
+#   page_type: overview
+#   url: https://...
+#   selector: null
