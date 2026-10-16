@@ -1,0 +1,39 @@
+name: Theo doi trang du hoc
+
+on:
+  schedule:
+    # Gio UTC. 01:07 UTC = 08:07 sang gio Viet Nam, moi ngay.
+    - cron: "7 1 * * *"
+  workflow_dispatch: {}   # cho phep bam nut "Run workflow" de chay tay
+
+permissions:
+  contents: write         # de luu snapshot moi vao repo
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lay code
+        uses: actions/checkout@v4
+
+      - name: Cai Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cai thu vien
+        run: pip install -r requirements.txt
+
+      - name: Kiem tra cac trang
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python watcher.py
+
+      - name: Luu snapshot moi
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add snapshots
+          git diff --cached --quiet || git commit -m "Cap nhat snapshot $(date -u +%Y-%m-%d)"
+          git push
